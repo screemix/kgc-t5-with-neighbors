@@ -36,3 +36,5 @@ sentence-transformers==2.2.2
 sentencepiece==0.1.97
 sklearn==0.0.post1
 tensorboard==2.11.0
+sh==2.0.6
+wget==3.2
