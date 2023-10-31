@@ -15,3 +15,8 @@ Also, one can open the notebooks in Google colab:
 ```t5_KGC_neighbors_demo.ipynb``` - [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/screemix/kgc-t5-with-neighbors/blob/main/t5_KGC_neighbors_demo.ipynb#scrollTo=ixe4066dgVbB) 
 
 ```gpt4_KGC_demo.ipynb``` - [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/screemix/kgc-t5-with-neighbors/blob/main/gpt4_KGC_demo.ipynb)
+
+
+Run verbalization:
+
+``` python3 verbalization.py --relation_vectors_path "data/embeddings/fasttext_vecs-wikidata5m.npy" --rel2ind_path "data/relation2ind-wikidata5m.json" --entity_mapping_path "data/mappings/wd5m_aliases_entities_v3.txt" --relation_mapping_path "data/relation2text-wikidata5m.json" --mongodb_port 2701```
