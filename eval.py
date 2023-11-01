@@ -20,7 +20,7 @@ import argparse, sys
 
 logging.basicConfig(level=logging.INFO)
 
-entity_path = "wd5m_aliases_entities_v3.txt"
+entity_path = "data/mappings/wd5m_aliases_entities_v3.txt"
 entity_mapping = {}
 inverse_entity_mapping = {}
 
@@ -32,7 +32,7 @@ with open(entity_path, "r") as f:
         inverse_entity_mapping[name] = id_
 
 
-relation_path = "relation_mapping.txt"
+relation_path = 'data/mappings/wd5m_aliases_relations_v3.txt'
 inverse_relation_mapping = {}
 
 with open(relation_path, "r") as f:
