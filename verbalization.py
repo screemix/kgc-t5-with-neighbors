@@ -125,10 +125,10 @@ def verbalize_dataset(input_df, output_collection, verbalizer):
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--relation_vectors_path", help="path to the embeddings of verbalized relations")
-parser.add_argument("--rel2ind_path", help="path to the mapping of textual relations to the index of corresponding vectors")
-parser.add_argument("--entity_mapping_path", help="path to the entity2text mapping")
-parser.add_argument("--relation_mapping_path", help="path to the relation2text mapping")
+parser.add_argument("--relation_vectors_path", help="path to the embeddings of verbalized relations", default="data/embeddings/fasttext_vecs-wikidata5m.npy")
+parser.add_argument("--rel2ind_path", help="path to the mapping of textual relations to the index of corresponding vectors", default="data/relation2ind-wikidata5m.json")
+parser.add_argument("--entity_mapping_path", help="path to the entity2text mapping", default="data/mappings/wd5m_aliases_entities_v3.txt")
+parser.add_argument("--relation_mapping_path", help="path to the relation2text mapping", default="data/relation2text-wikidata5m.json")
 parser.add_argument("--mongodb_port", help="port of the mongodb collection with the dataset", type=int, default=27018)
 parser.add_argument("--input_db", help="name of the mongo database that stores wikidata5m dataset", default='wikidata5m')
 parser.add_argument("--train_collection_input", help="name of the collection that stores train KG", default='train-set')
