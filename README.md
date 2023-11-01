@@ -22,4 +22,4 @@ Download mappings and prepare relations' embeddings:
 
 Run verbalization:
 
-``` python3 verbalization.py --relation_vectors_path "data/embeddings/fasttext_vecs-wikidata5m.npy" --rel2ind_path "data/relation2ind-wikidata5m.json" --entity_mapping_path "data/mappings/wd5m_aliases_entities_v3.txt" --relation_mapping_path "data/relation2text-wikidata5m.json" --mongodb_port 27017```
+```python3 verbalization.py --relation_vectors_path "data/embeddings/fasttext_vecs-wikidata5m.npy" --rel2ind_path "data/relation2ind-wikidata5m.json" --entity_mapping_path "data/mappings/wd5m_aliases_entities_v3.txt" --relation_mapping_path "data/relation2text-wikidata5m.json" --mongodb_port 27017```
