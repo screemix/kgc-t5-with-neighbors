@@ -13,33 +13,31 @@ import pickle
 from typing import Dict
 from collections import defaultdict
 import json
-import logging
+from loguru import logger
 
 from transformers import AutoTokenizer
 import argparse, sys
 
-logging.basicConfig(level=logging.INFO)
+parser = argparse.ArgumentParser()
 
-entity_path = "data/mappings/wd5m_aliases_entities_v3.txt"
-entity_mapping = {}
-inverse_entity_mapping = {}
+parser.add_argument("--model_path", help="path to the model's weigths")
+parser.add_argument("--model_name", help="Name of model config, e.g. t5-small")
+parser.add_argument("--gpu", help="Number of gpu used for evaluation", type=int)
+parser.add_argument("--transductive", help="0 for inductive datasets, 1 for transductive", type=bool)
+parser.add_argument("--neighborhood", help="1 to use neighborhood in the input, 0 otherwise", type=bool)
+parser.add_argument("--filter_unknown_entities", help="whether to filter generated results that are not among known entities", type=bool)
+parser.add_argument("--filter_known_links", help="whether to filter results that already persist in train or valid dataset", type=bool)
+parser.add_argument("--mongodb_port", help="port of the mongodb collection with the dataset", default=27018, type=int)
+parser.add_argument("--entity_mapping_path", help="path to the entity2text mapping", default="data/mappings/wd5m_aliases_entities_v3.txt")
+parser.add_argument("--relation_mapping_path", help="path to the relation2text mapping", default="data/mappings/wd5m_aliases_relations_v3.txt")
+parser.add_argument("--input_db", help="name of the mongo database that stores wikidata5m dataset", default='wikidata5m')
+parser.add_argument("--verbalized_eval_collection", help="name of the collection that stores verbalized KG for evaluation", default='verbalized_test')
+parser.add_argument("--train_collection_input", help="name of the collection that stores train KG", default='train-set')
+parser.add_argument("--valid_collection_input", help="name of the collection that stores valid KG", default='valid-set')
+parser.add_argument("--test_collection_input", help="name of the collection that stores test KG", default='test-set')
+parser.add_argument("--output_file", help="file to output scores", default='output_scores.txt')
 
-with open(entity_path, "r") as f:
-    for line in tqdm(f, total=4818679):
-        line = line.strip().split("\t")
-        id_, name = line[0], line[1]
-        entity_mapping[id_] = name
-        inverse_entity_mapping[name] = id_
-
-
-relation_path = 'data/mappings/wd5m_aliases_relations_v3.txt'
-inverse_relation_mapping = {}
-
-with open(relation_path, "r") as f:
-    for line in tqdm(f, total=828):
-        line = line.strip().split("\t")
-        id_, relation = line[0], line[1]
-        inverse_relation_mapping[relation] = id_
+args = parser.parse_args()
 
 
 class EvalBatch:
@@ -65,7 +63,7 @@ class KGLMDataset(Dataset):
         self.max_seq_length = max_seq_length
 
         if self.neighborhood:
-            logging.info("Using neighborhoods in inputs...")
+            logger.info("Using neighborhoods in inputs...")
 
     def  __getitem__(self, idx):
         item = {}
@@ -153,7 +151,7 @@ def getScores(ids, scores, pad_token_id, length_normalization):
 
 
 def eval(model, dataset, args):
-    logging.info('Using model.generate')
+    logger.info('Using model.generate')
 
     data_loader = DataLoader(dataset, args.batch_size, shuffle=False, num_workers=1,
         collate_fn=dataset._collate_eval_with_input_strings)
@@ -238,12 +236,12 @@ def softmax(x):
     return np.exp(x) / np.sum(np.exp(x), axis=0)
 
 
-def get_filtering_entities(inp, relation, collection_names=['train-set', 'valid-set', 'test-set'], inverse=False):
-    client = MongoClient('localhost', DB_PORT)
+def get_filtering_entities(inp, relation, collection_names=[args.train_collection_input, args.valid_collection_input, args.test_collection_input], inverse=False):
+    client = MongoClient('localhost', args.mongodb_port)
     all_filter_entities = []
 
     for coll in collection_names:
-        collection = client['wikidata5m'][coll]
+        collection = client[args.input_db][coll]
         filter_entities = []
 
         if inverse:
@@ -264,29 +262,33 @@ def set_seed(seed):
 
 set_seed(42)
 
-parser = argparse.ArgumentParser()
+logger.info("Loading mappings...")
+entity_mapping = {}
+inverse_entity_mapping = {}
 
-parser.add_argument("--model_path", help="path to the model's weigths")
-parser.add_argument("--gpu", help="Number of gpu used for evaluation")
-parser.add_argument("--model_name", help="Name of model config, e.g. t5-small")
-parser.add_argument("--transductive", help="0 for inductive datasets, 1 for transductive")
-parser.add_argument("--neighborhood", help="1 to use neighborhood in the input, 0 otherwise")
-parser.add_argument("--filter_unknown_entities", help="whether to filter generated results that are not among known entities")
-parser.add_argument("--filter_known_links", help="whether to filter results that already persist in train or valid dataset")
+with open(args.entity_mapping_path, "r") as f:
+    for line in tqdm(f, total=4818679):
+        line = line.strip().split("\t")
+        id_, name = line[0], line[1]
+        entity_mapping[id_] = name
+        inverse_entity_mapping[name] = id_
 
 
-args = parser.parse_args()
+inverse_relation_mapping = {}
 
-transductive = bool(int(args.transductive))
-use_neighborhood = bool(int(args.neighborhood))
-device = int(args.gpu)
-model_name = args.model_name
-path = args.model_path
-save_file = 'scores_{}'.format(path.replace("/", "_"))
-filter_unknown_entities = bool(int(args.filter_unknown_entities))
-filter_known_links = bool(int(args.filter_known_links))
+with open(args.relation_mapping_path, "r") as f:
+    for line in tqdm(f, total=828):
+        line = line.strip().split("\t")
+        id_, relation = line[0], line[1]
+        inverse_relation_mapping[relation] = id_
 
-torch.cuda.set_device(device)
+
+if not os.path.exists(os.path.join(os.getcwd(), 'scores/')):
+    os.mkdir('scores/')
+
+save_file = 'scores_{}'.format(args.model_path.replace("/", "_"))
+
+torch.cuda.set_device(args.gpu)
 
 # tokenizer = AutoTokenizer.from_pretrained("DeepPavlov/t5-wikidata5M-with-neighbors")
 # tokenizer.add_special_tokens({'sep_token': '[SEP]'})
@@ -295,26 +297,25 @@ torch.cuda.set_device(device)
 # model.to('cuda:{}'.format(device))
 # model.eval()
 
-model_cpt = os.path.join(path, 'model_best.pth')
-config_path = os.path.join(path, 'config.json')
+model_cpt = os.path.join(args.model_path, 'model_best.pth')
+config_path = os.path.join(args.model_path, 'config.json')
 
-tokenizer = AutoTokenizer.from_pretrained(model_name)
+tokenizer = AutoTokenizer.from_pretrained(args.model_name)
 tokenizer.add_special_tokens({'sep_token': '[SEP]'})
 
-model_cfg = AutoConfig.from_pretrained(model_name)
+model_cfg = AutoConfig.from_pretrained(args.model_name)
 model = T5ForConditionalGeneration(config=model_cfg)
 cpt = torch.load(model_cpt, map_location='cpu')
 model.load_state_dict(cpt['model_state_dict'])
-model.to('cuda:{}'.format(device))
+model.to('cuda:{}'.format(args.gpu))
 model.eval()
 
 
 model_args = Args(save_file=save_file)
-DB_PORT = 27017
-dataset = KGLMDataset(DB_PORT, 'wikidata5m', 'test', tokenizer, max_seq_length=model_args.max_output_length, neighborhood=use_neighborhood)
+dataset = KGLMDataset(args.mongodb_port, args.input_db, args.verbalized_eval_collection, tokenizer, max_seq_length=model_args.max_output_length, neighborhood=args.neighborhood)
 
 acc = eval(model, dataset, model_args) 
-logging.info("Accuracy@all: ", acc)
+logger.info("Accuracy@all: ", acc)
 
 scores_data = pickle.load(open('scores/' + model_args.save_file + '.pickle', 'rb'))
 
@@ -322,15 +323,15 @@ scores_data = pickle.load(open('scores/' + model_args.save_file + '.pickle', 'rb
 # and leaving only existing entities from KG in case of transductive setting
 predictions_scores_dicts = []
 
-if transductive and filter_unknown_entities:
-    logging.info("Filtering unknown entities...")
+if args.transductive and args.filter_unknown_entities:
+    logger.info("Filtering unknown entities...")
 
 for prediction_arr, score_arr in tqdm(zip(scores_data['prediction_strings'], scores_data['scores']), total=len(scores_data['prediction_strings'])):
     ps_pairs = [(p, s) for p, s in zip(prediction_arr, score_arr)]
     ps_pairs = list(set(ps_pairs)) # while sampling, duplicates are created
     ps_dict_only_entities = defaultdict(list)
 
-    if transductive and filter_unknown_entities:
+    if args.transductive and args.filter_unknown_entities:
 
         # remove predictions that are not entities 
         for ps in ps_pairs:
@@ -349,8 +350,8 @@ for prediction_arr, score_arr in tqdm(zip(scores_data['prediction_strings'], sco
 # fitering predictions 
 predictions_filtered = []
 
-if filter_known_links:
-    logging.info("Filtering known links...")
+if args.filter_known_links:
+    logger.info("Filtering known links...")
 
 for i in tqdm(range(len(predictions_scores_dicts))):
     ps_dict = predictions_scores_dicts[i].copy()
@@ -362,7 +363,7 @@ for i in tqdm(range(len(predictions_scores_dicts))):
     
     # getting all tails connected with this input
 
-    if filter_known_links:
+    if args.filter_known_links:
 
         if target in prediction_strings:
             original_score = ps_dict[target]
@@ -439,16 +440,16 @@ for i in tqdm(range(len(predictions_filtered))):
 total_count = len(predictions_filtered)
 
 
-with open('metrics_results_with_new_inverse.txt','a') as f:
+with open(os.join('scores/', args.output_file),'a') as f:
     f.write('Scored model: {} \n'.format(save_file))
-    logging.info('Scored model: {} \n'.format(save_file))
+    logger.info('Scored model: {} \n'.format(save_file))
     f.write('Acc: {} \n'.format(acc))
-    logging.info('Acc: {} \n'.format(acc))
+    logger.info('Acc: {} \n'.format(acc))
 
     for k in k_list:
         hits_at_k = count[k]/total_count
-        logging.info('hits@{}'.format(k), hits_at_k)
+        logger.info('hits@{}'.format(k), hits_at_k)
         f.write('hits@{}: {} \n'.format(k, hits_at_k))
 
-    logging.info('mrr', reciprocal_ranks/total_count)
+    logger.info('mrr', reciprocal_ranks/total_count)
     f.write('MRR: {} \n \n'.format(reciprocal_ranks/total_count))
