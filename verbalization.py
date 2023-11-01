@@ -113,10 +113,10 @@ def verbalize_dataset(input_df, output_collection, verbalizer):
         except Exception as e:
             logger.exception('Exception {} on {}th triplet'.format(e, i))
         
-        if i % 1000 == 0 and i > 0:
+        if i % 5000 == 0 and i > 0:
             output_collection.insert_many(docs)
             docs = []
-            if i % 10000 == 0:
+            if i % 100000 == 0:
                 logger.info('verbalized {}th triplet | spanned time: {}s'.format(i, int((time.time() - start_time))))
 
     output_collection.insert_many(docs)
@@ -132,6 +132,8 @@ parser.add_argument("--relation_mapping_path", help="path to the relation2text m
 parser.add_argument("--mongodb_port", help="port of the mongodb collection with the dataset", type=int, default=27018)
 parser.add_argument("--input_db", help="name of the mongo database that stores wikidata5m dataset", default='wikidata5m')
 parser.add_argument("--train_collection_input", help="name of the collection that stores train KG", default='train-set')
+parser.add_argument("--valid_collection_input", help="name of the collection that stores valid KG", default='valid-set')
+parser.add_argument("--test_collection_input", help="name of the collection that stores test KG", default='test-set')
 parser.add_argument("--train_collection_output", help="name of the collection that stores verbalized train KG", default='verbalized_train')
 parser.add_argument("--valid_collection_output", help="name of the collection that stores verbalized valid KG", default='verbalized_valid')
 parser.add_argument("--test_collection_output", help="name of the collection that stores verbalized test KG", default='verbalized_test')
@@ -163,18 +165,41 @@ train_df = pd.read_csv(dataset.training_path, sep='\t', names=['head', 'relation
 valid_df = pd.read_csv(dataset.validation_path, sep="\t", names=["head", "relation", "tail"], encoding="utf-8")
 test_df = pd.read_csv(dataset.testing_path, sep="\t", names=["head", "relation", "tail"], encoding="utf-8")
 
-client = MongoClient('localhost', int(args.mongodb_port))
+client = MongoClient('localhost', args.mongodb_port)
 DB_NAME = args.input_db
+
+
 collection_train = client[DB_NAME][args.train_collection_input]
+collection_valid = client[DB_NAME][args.valid_collection_input]
+collection_test = client[DB_NAME][args.test_collection_input]
+
+logger.info('Creating indexes in the collection with the KGs...')
+for coll in [collection_train, collection_valid, collection_test]:
+    collection_train.create_index([("head", 1)])
+    coll.create_index([("tail", 1)])
+    coll.create_index([("relation", 1)])
 
 logger.info('Populating collection with the train KG...')
-for i, doc tqdm(train_df.iterrows(), total=len(train_df)):
-    collection_train.insert_one({'_id': i , 'head': doc['head'], 'tail': doc['tail'], 'relation': doc['relation']})
+docs = []
+for i, doc in tqdm(train_df.iterrows(), total=len(train_df)):
+    docs.append({'_id': i , 'head': doc['head'], 'tail': doc['tail'], 'relation': doc['relation']})
+    if i % 100000 == 0 and i > 0:
+        collection_train.insert_many(docs)
+        docs = []
+collection_train.insert_many(docs)
 
-logger.info('Creating indexes in the collection with the train KG...')
-collection_train.create_index([("head", 1)])
-collection_train.create_index([("tail", 1)])
-collection_train.create_index([("relation", 1)])
+
+logger.info('Populating collection with the valid KG...')
+for i, doc in tqdm(valid_df.iterrows(), total=len(valid_df)):
+    collection_valid.insert_one({'_id': i , 'head': doc['head'], 'tail': doc['tail'], 'relation': doc['relation']})
+
+
+logger.info('Populating collection with the test KG...')
+for i, doc in tqdm(test_df.iterrows(), total=len(test_df)):
+    collection_test.insert_one({'_id': i , 'head': doc['head'], 'tail': doc['tail'], 'relation': doc['relation']})
+
+
+
 
 verbalizer_train = Verbalizer(collection_train, similarity_matrix=similarity_matrix,
                                      relation2index=rel2ind, entity2text=entity_mapping, relation2text=relation_mapping)
