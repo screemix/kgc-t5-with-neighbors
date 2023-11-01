@@ -129,7 +129,12 @@ parser.add_argument("--relation_vectors_path", help="path to the embeddings of v
 parser.add_argument("--rel2ind_path", help="path to the mapping of textual relations to the index of corresponding vectors")
 parser.add_argument("--entity_mapping_path", help="path to the entity2text mapping")
 parser.add_argument("--relation_mapping_path", help="path to the relation2text mapping")
-parser.add_argument("--mongodb_port", help="port of the mongodb collection with the dataset")
+parser.add_argument("--mongodb_port", help="port of the mongodb collection with the dataset", type=int, default=27018)
+parser.add_argument("--input_db", help="name of the mongo database that stores wikidata5m dataset", default='wikidata5m')
+parser.add_argument("--train_collection_input", help="name of the collection that stores train KG", default='train-set')
+parser.add_argument("--train_collection_output", help="name of the collection that stores verbalized train KG", default='verbalized_train')
+parser.add_argument("--valid_collection_output", help="name of the collection that stores verbalized valid KG", default='verbalized_valid')
+parser.add_argument("--test_collection_output", help="name of the collection that stores verbalized test KG", default='verbalized_test')
 
 args = parser.parse_args()
 
@@ -159,7 +164,8 @@ valid_df = pd.read_csv(dataset.validation_path, sep="\t", names=["head", "relati
 test_df = pd.read_csv(dataset.testing_path, sep="\t", names=["head", "relation", "tail"], encoding="utf-8")
 
 client = MongoClient('localhost', int(args.mongodb_port))
-collection_train = client["wikidata5m"]['train-set']
+DB_NAME = args.input_db
+collection_train = client[DB_NAME][args.train_collection_input]
 
 logger.info('Populating collection with the train KG...')
 for i, doc tqdm(train_df.iterrows(), total=len(train_df)):
@@ -175,16 +181,16 @@ verbalizer_train = Verbalizer(collection_train, similarity_matrix=similarity_mat
 
 
 logger.info('Verbalizing train KG...')
-ouput_train_collection = client["wikidata5m"]['verbalized_train']
+ouput_train_collection = client[DB_NAME][args.train_collection_output]
 train_res = verbalize_dataset(train_df, ouput_train_collection, verbalizer_train)
 assert train_res == len(train_df) * 2
 
 logger.info('Verbalizing valid KG...')
-ouput_valid_collection = client["wikidata5m"]['verbalized_valid']
+ouput_valid_collection = client[DB_NAME][args.valid_collection_output]
 valid_res = verbalize_dataset(valid_df, ouput_valid_collection, verbalizer_train)
 assert valid_res == len(valid_df) * 2
 
 logger.info('Verbalizing test KG...')
-ouput_test_collection = client["wikidata5m"]['verbalized_test']
+ouput_test_collection = client[DB_NAME][args.test_collection_output]
 test_res = verbalize_dataset(test_df, ouput_test_collection, verbalizer_train)
 assert test_res == len(test_df) * 2
