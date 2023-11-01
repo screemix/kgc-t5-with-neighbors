@@ -159,20 +159,32 @@ valid_df = pd.read_csv(dataset.validation_path, sep="\t", names=["head", "relati
 test_df = pd.read_csv(dataset.testing_path, sep="\t", names=["head", "relation", "tail"], encoding="utf-8")
 
 client = MongoClient('localhost', int(args.mongodb_port))
-
 collection_train = client["wikidata5m"]['train-set']
+
+logger.info('Populating collection with the train KG...')
+for i, doc tqdm(train_df.iterrows(), total=len(train_df)):
+    collection_train.insert_one({'_id': i , 'head': doc['head'], 'tail': doc['tail'], 'relation': doc['relation']})
+
+logger.info('Creating indexes in the collection with the train KG...')
+collection_train.create_index([("head", 1)])
+collection_train.create_index([("tail", 1)])
+collection_train.create_index([("relation", 1)])
+
 verbalizer_train = Verbalizer(collection_train, similarity_matrix=similarity_matrix,
                                      relation2index=rel2ind, entity2text=entity_mapping, relation2text=relation_mapping)
 
 
+logger.info('Verbalizing train KG...')
 ouput_train_collection = client["wikidata5m"]['verbalized_train']
 train_res = verbalize_dataset(train_df, ouput_train_collection, verbalizer_train)
 assert train_res == len(train_df) * 2
 
+logger.info('Verbalizing valid KG...')
 ouput_valid_collection = client["wikidata5m"]['verbalized_valid']
 valid_res = verbalize_dataset(valid_df, ouput_valid_collection, verbalizer_train)
 assert valid_res == len(valid_df) * 2
 
+logger.info('Verbalizing test KG...')
 ouput_test_collection = client["wikidata5m"]['verbalized_test']
 test_res = verbalize_dataset(test_df, ouput_test_collection, verbalizer_train)
 assert test_res == len(test_df) * 2
