@@ -1,6 +1,7 @@
 /data
 /metrics
 /outdated
+/runs
 
 *.bin
 *.csv
