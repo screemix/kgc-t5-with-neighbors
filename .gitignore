@@ -2,6 +2,7 @@
 /metrics
 /outdated
 /runs
+/scores
 
 *.bin
 *.csv
