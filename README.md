@@ -18,9 +18,15 @@ Prepare verbalizations for training:
 
 ```python3 verbalization.py --mongodb_port 27018```
 
-Lauch training:
+Launch training using neighborhood in the context:
 ```cd scripts/```
-```CUDA_VISIBLE_DEVICES=0,1,2,3 NP=4 ./train_wikidata5m_parameter_selection.sh```
+
+```CUDA_VISIBLE_DEVICES=0,1,2,3 NP=4 ./train_wikidata5m.sh```
+
+Launch training without neighborhood in the context:
+```cd scripts/```
+
+```CUDA_VISIBLE_DEVICES=0,1,2,3 NP=4 ./train_wikidata5m_baseline.sh```
 
 ---
 
