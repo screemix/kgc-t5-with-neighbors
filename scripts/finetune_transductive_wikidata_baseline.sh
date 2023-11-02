@@ -30,7 +30,6 @@ echo $MODEL_CFG
 horovodrun --gloo -np $NP python run_finetuning_kglm.py \
         --task_name $TASK_NAME \
         --model_path ./runs/$MODEL_NAME/$TASK_NAME/lr${LR}_${SCHEDULER}_adamw_wd1e-03_${SRC_LEN}-${TGT_LEN}_bs${TBS}_iters${ITERS}_pretrained/run_$N \
-        --cpt_path ./runs/t5-small/not-pretrained-wikidata-without-neighbourhood/lr1e-05_constant_with_warmup_adamw_wd1e-03_512-512_bs320_iters5000000_pretrained/run_1 \
         --model_cfg $MODEL_CFG \
         --tokenizer $TOKENIZER_NAME \
         --model_type $MODEL_TYPE \

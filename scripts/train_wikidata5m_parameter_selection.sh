@@ -8,7 +8,7 @@ CUDA_LAUNCH_BLOCKING=1
 
 MODEL_NAME=t5-small
 MODEL_CFG="t5-small"
-TOKENIZER_NAME=tokenizer-t5-wikidata5m
+TOKENIZER_NAME=t5-small
 MODEL_TYPE=encoder-decoder
 TASK_NAME=not-pretrained-wikidata
 
