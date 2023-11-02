@@ -224,7 +224,7 @@ if __name__ == '__main__':
     if hvd.rank() == 0:
         logger.info(f'preparing dataset for: {args.task_name}')
 
-    train_dataset = KGLMDataset(DB_PORT, 'wikidata5m', 'train', neighborhood=not args.drop_neighborhood)
+    train_dataset = KGLMDataset(DB_PORT, 'wikidata5m', 'verbalized_train', neighborhood=not args.drop_neighborhood)
     # shuffle train data each epoch (one loop over train_dataset)
     train_sampler = DistributedSampler(train_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=True,
                                        drop_last=False, seed=args.seed)
@@ -240,7 +240,7 @@ if __name__ == '__main__':
     valid_dataloader = None
     if hvd.rank() == 0:
         logger.info(f'preparing validation data from: {args.task_name}')
-    valid_dataset = KGLMDataset(DB_PORT, 'wikidata5m', 'test', neighborhood=not args.drop_neighborhood)
+    valid_dataset = KGLMDataset(DB_PORT, 'wikidata5m', 'verbalized_valid', neighborhood=not args.drop_neighborhood)
 
     valid_sampler = DistributedSampler(valid_dataset, rank=hvd.rank(), num_replicas=hvd.size(), shuffle=False)
     valid_dataloader = DataLoader(valid_dataset, batch_size=per_worker_batch_size, sampler=valid_sampler,
