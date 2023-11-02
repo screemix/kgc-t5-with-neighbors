@@ -4,6 +4,8 @@ This repository contains the source code of experiments and demonstration of mod
 
 Additional details about experiments are published on our blog post - [link](https://medium.com/deeppavlov/improving-knowledge-graph-completion-with-generative-lm-and-neighbors-5bee426223c8).
 
+---
+
 This repository is currently under the finilizing process. 
 Current todo's:
 
