@@ -8,11 +8,19 @@ import logging
 import wget
 from sh import gunzip
 
+
 data_dir = 'data'
-os.makedirs(data_dir)
+
+if not os.path.isdir(data_dir):
+    os.makedirs(data_dir)
+
 mappings_path = os.path.join(data_dir, 'mappings')
 embeddings_path = os.path.join(data_dir, 'embeddings')
-os.makedirs(mappings_path)
+
+if not os.path.isdir(mappings_path):
+    os.makedirs(mappings_path)
+
+if not os.path.isdir(embeddings_path):
 os.makedirs(embeddings_path)
 
 wget.download("https://storage.googleapis.com/t5-kgc-colab/data/wd5m_aliases_entities_v3.txt", out=mappings_path)
