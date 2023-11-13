@@ -20,8 +20,8 @@ Current todo's:
 ---
 ## Table of contents
 
-1. Reproducing experiments
-2. Demo notebooks
+1. [Reproducing experiments](https://github.com/screemix/kgc-t5-with-neighbors/tree/dev#reproducing-experiments)
+2. [Demo notebooks](https://github.com/screemix/kgc-t5-with-neighbors/tree/dev#demo-notebooks)
 
 ---
 
