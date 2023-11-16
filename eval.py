@@ -18,24 +18,28 @@ from loguru import logger
 from transformers import AutoTokenizer
 import argparse, sys
 
+from lm_experiments_tools.utils import collect_run_configuration, get_cls_by_name, get_optimizer # noqa: E402
+
 parser = argparse.ArgumentParser()
 
-parser.add_argument("--model_path", help="path to the model's weigths")
-parser.add_argument("--model_name", help="Name of model config, e.g. t5-small")
-parser.add_argument("--gpu", help="Number of gpu used for evaluation", type=int)
+parser.add_argument("--from_hub", help="Name of the repository and the model from huggingface model hub, e.g. DeepPavlov/t5-wikidata5M-with-neighbors", default=None)
+parser.add_argument("--cpt_path", help="Path to the model's weigths", default=None)
+parser.add_argument("--model_cfg", help="Name of model config, e.g. t5-small", default='t5-small')
+parser.add_argument('--tokenizer', type=str, default=None, help='path or name of pre-trained HF Tokenizer', default='t5-small')
+parser.add_argument("--gpu", help="id of gpu using for evaluation", type=int)
 parser.add_argument("--transductive", help="0 for inductive datasets, 1 for transductive", type=bool)
 parser.add_argument("--neighborhood", help="1 to use neighborhood in the input, 0 otherwise", type=bool)
-parser.add_argument("--filter_unknown_entities", help="whether to filter generated results that are not among known entities", type=bool)
-parser.add_argument("--filter_known_links", help="whether to filter results that already persist in train or valid dataset", type=bool)
-parser.add_argument("--mongodb_port", help="port of the mongodb collection with the dataset", default=27018, type=int)
-parser.add_argument("--entity_mapping_path", help="path to the entity2text mapping", default="data/mappings/wd5m_aliases_entities_v3.txt")
-parser.add_argument("--relation_mapping_path", help="path to the relation2text mapping", default="data/mappings/wd5m_aliases_relations_v3.txt")
-parser.add_argument("--input_db", help="name of the mongo database that stores wikidata5m dataset", default='wikidata5m')
-parser.add_argument("--verbalized_eval_collection", help="name of the collection that stores verbalized KG for evaluation", default='verbalized_test')
-parser.add_argument("--train_collection_input", help="name of the collection that stores train KG", default='train-set')
-parser.add_argument("--valid_collection_input", help="name of the collection that stores valid KG", default='valid-set')
-parser.add_argument("--test_collection_input", help="name of the collection that stores test KG", default='test-set')
-parser.add_argument("--output_file", help="file to output scores", default='output_scores.txt')
+parser.add_argument("--filter_unknown_entities", help="Whether to filter generated enities that are not among known entities, applicable only to transductive datasets", type=bool)
+parser.add_argument("--filter_known_links", help="Whether to filter results that already persist in train or valid dataset", type=bool)
+parser.add_argument("--mongodb_port", help="Port of the mongodb collection with the dataset", default=27017, type=int)
+parser.add_argument("--entity_mapping_path", help="Path to the entity2text mapping", default="data/mappings/wd5m_aliases_entities_v3.txt")
+parser.add_argument("--relation_mapping_path", help="Path to the relation2text mapping", default="data/mappings/wd5m_aliases_relations_v3.txt")
+parser.add_argument("--input_db", help="Name of the mongo database that stores wikidata5m dataset", default='wikidata5m')
+parser.add_argument("--verbalized_eval_collection", help="Name of the collection that stores verbalized KG for evaluation", default='verbalized_test')
+parser.add_argument("--train_collection_input", help="Name of the collection that stores train KG", default='train-set')
+parser.add_argument("--valid_collection_input", help="Name of the collection that stores valid KG", default='valid-set')
+parser.add_argument("--test_collection_input", help="Name of the collection that stores test KG", default='test-set')
+parser.add_argument("--output_file", help="File to output scores", default='scores/output_scores.txt')
 
 args = parser.parse_args()
 
@@ -89,7 +93,7 @@ class KGLMDataset(Dataset):
 
 
 class Args:
-    def __init__(self, length_penalty=1.0, max_output_length=512,  length_normalization=0,
+    def __init__(self, length_penalty=1.0, max_output_length=512, length_normalization=0,
                  batch_size=1, beam_size=1, save_file=None, num_predictions=50):
         self.batch_size = batch_size
         self.beam_size = beam_size
@@ -226,9 +230,15 @@ def eval(model, dataset, args):
                     'relations': relations, 
                     'heads': heads}
 
-    fname = 'scores/' + args.save_file + '.pickle'
+
+    scores_dir = 'scores/'
+    if not os.path.isdir(scores_dir):
+        os.makedirs(scores_dir)
+
+    fname = os.path.join(scores_dir, args.save_file + '.pickle')
+
     pickle.dump(data_to_save, open(fname, 'wb'))
-    accuracy = correct/len(targets)
+    accuracy = correct / len(targets)
     return accuracy    
 
 def softmax(x):
@@ -236,7 +246,8 @@ def softmax(x):
     return np.exp(x) / np.sum(np.exp(x), axis=0)
 
 
-def get_filtering_entities(inp, relation, collection_names=[args.train_collection_input, args.valid_collection_input, args.test_collection_input], inverse=False):
+# gathering all known links for specific head and relation
+def get_filtering_entities(head, relation, collection_names=[args.train_collection_input, args.valid_collection_input, args.test_collection_input], inverse=False):
     client = MongoClient('localhost', args.mongodb_port)
     all_filter_entities = []
 
@@ -245,10 +256,10 @@ def get_filtering_entities(inp, relation, collection_names=[args.train_collectio
         filter_entities = []
 
         if inverse:
-            for doc in collection.find({'tail': inp, 'relation': relation}):
+            for doc in collection.find({'tail': head, 'relation': relation}):
                 filter_entities.append(entity_mapping[doc['head']])
         else:
-            for doc in collection.find({'head': inp, 'relation': relation}):
+            for doc in collection.find({'head': head, 'relation': relation}):
                 filter_entities.append(entity_mapping[doc['tail']])
         
         all_filter_entities.extend(filter_entities)
@@ -283,33 +294,39 @@ with open(args.relation_mapping_path, "r") as f:
         inverse_relation_mapping[relation] = id_
 
 
-if not os.path.exists(os.path.join(os.getcwd(), 'scores/')):
-    os.mkdir('scores/')
 
-save_file = 'scores_{}'.format(args.model_path.replace("/", "_"))
+if args.cpt_path:
+    save_file = 'scores_{}'.format(args.cpt_path.replace("/", "_"))
+else:
+    save_file = 'scores_{}'.format(args.from_hub.replace("/", "_"))
 
 torch.cuda.set_device(args.gpu)
 
-# tokenizer = AutoTokenizer.from_pretrained("DeepPavlov/t5-wikidata5M-with-neighbors")
-# tokenizer.add_special_tokens({'sep_token': '[SEP]'})
+if args.cpt_path and args.model_cfg and args.tokenizer:
 
-# model = AutoModelForSeq2SeqLM.from_pretrained("DeepPavlov/t5-wikidata5M-with-neighbors")
-# model.to('cuda:{}'.format(device))
-# model.eval()
+    tokenizer = AutoTokenizer.from_pretrained(args.tokenizer)
 
-model_cpt = os.path.join(args.model_path, 'model_best.pth')
-config_path = os.path.join(args.model_path, 'config.json')
+    model_cfg = AutoConfig.from_pretrained(args.model_cfg)
+    model = T5ForConditionalGeneration(config=model_cfg)
+    model_cpt = os.path.join(args.cpt_path, 'model_best.pth')
+    cpt = torch.load(model_cpt, map_location='cpu')
+    model.load_state_dict(cpt['model_state_dict'])
 
-tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-tokenizer.add_special_tokens({'sep_token': '[SEP]'})
+elif args.from_hub:
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.from_hub,
+    )
+    model = AutoModelForSeq2SeqLM.from_pretrained(
+        args.from_hub,
+    )
+else:
+    logger.error("You must specify arguments for the model")
 
-model_cfg = AutoConfig.from_pretrained(args.model_name)
-model = T5ForConditionalGeneration(config=model_cfg)
-cpt = torch.load(model_cpt, map_location='cpu')
-model.load_state_dict(cpt['model_state_dict'])
+
 model.to('cuda:{}'.format(args.gpu))
 model.eval()
 
+tokenizer.add_special_tokens({'sep_token': '[SEP]'})
 
 model_args = Args(save_file=save_file)
 dataset = KGLMDataset(args.mongodb_port, args.input_db, args.verbalized_eval_collection, tokenizer, max_seq_length=model_args.max_output_length, neighborhood=args.neighborhood)
@@ -317,7 +334,7 @@ dataset = KGLMDataset(args.mongodb_port, args.input_db, args.verbalized_eval_col
 acc = eval(model, dataset, model_args) 
 logger.info("Accuracy@all: ", acc)
 
-scores_data = pickle.load(open('scores/' + model_args.save_file + '.pickle', 'rb'))
+scores_data = pickle.load(open(os.join('scores/', model_args.save_file + '.pickle'), 'rb'))
 
 # creating list of dictionaries {prediction: score} for each input 
 # and leaving only existing entities from KG in case of transductive setting
@@ -372,11 +389,11 @@ for i in tqdm(range(len(predictions_scores_dicts))):
         if inverse:
             relation = relation.replace("inverse of", "").strip()
             relation = inverse_relation_mapping[relation]
-            filtering_entities = get_filtering_entities(head, relation, collection_names=['train-set', 'valid-set', 'test-set'], inverse=True)
+            filtering_entities = get_filtering_entities(head, relation, inverse=True)
 
         else:
             relation = inverse_relation_mapping[relation]
-            filtering_entities = get_filtering_entities(head, relation, collection_names=['train-set', 'valid-set', 'test-set'], inverse=False)
+            filtering_entities = get_filtering_entities(head, relation, inverse=False)
 
         # if there is a link between predicted and input entities, we don't consider it during ranking   
         for ent in filtering_entities:
@@ -387,7 +404,7 @@ for i in tqdm(range(len(predictions_scores_dicts))):
             ps_dict[target] = original_score
         
 
-    # # dividing scores and predictions to normalize the scores    
+    # dividing scores and predictions to normalize the scores    
     names_arr = []
     scores_arr = []
     for k, v in ps_dict.items():
@@ -441,15 +458,15 @@ total_count = len(predictions_filtered)
 
 
 with open(os.join('scores/', args.output_file),'a') as f:
-    f.write('Scored model: {} \n'.format(save_file))
-    logger.info('Scored model: {} \n'.format(save_file))
+    f.write('Scored model: {} \n'.format(model_args.save_file))
+    logger.info('Scored model: {} \n'.format(model_args.save_file))
     f.write('Acc: {} \n'.format(acc))
     logger.info('Acc: {} \n'.format(acc))
 
     for k in k_list:
-        hits_at_k = count[k]/total_count
+        hits_at_k = count[k] / total_count
         logger.info('hits@{}'.format(k), hits_at_k)
         f.write('hits@{}: {} \n'.format(k, hits_at_k))
 
     logger.info('mrr', reciprocal_ranks/total_count)
-    f.write('MRR: {} \n \n'.format(reciprocal_ranks/total_count))
+    f.write('MRR: {} \n \n'.format(reciprocal_ranks / total_count))
