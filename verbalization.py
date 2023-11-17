@@ -146,7 +146,7 @@ parser.add_argument("--test_collection_input", help="name of the collection that
 parser.add_argument("--train_collection_output", help="name of the collection that stores verbalized train KG", default='verbalized_train')
 parser.add_argument("--valid_collection_output", help="name of the collection that stores verbalized valid KG", default='verbalized_valid')
 parser.add_argument("--test_collection_output", help="name of the collection that stores verbalized test KG", default='verbalized_test')
-parser.add_argument("--filter_transductive", help="whether to filter all entities from test and valid KG that are not in the train KG", default='1', type=bool)
+parser.add_argument("--filter_transductive", help="whether to filter all entities from test and valid KG that are not in the train KG", action='store_true')
 
 args = parser.parse_args()
 
@@ -175,6 +175,7 @@ dataset = datasets.Wikidata5M()
 train_df = pd.read_csv(dataset.training_path, sep='\t', names=['head', 'relation', 'tail'], encoding='utf-8')
 valid_df = pd.read_csv(dataset.validation_path, sep="\t", names=["head", "relation", "tail"], encoding="utf-8")
 test_df = pd.read_csv(dataset.testing_path, sep="\t", names=["head", "relation", "tail"], encoding="utf-8")
+
 
 logger.info('Length of the train KG: {}'.format(len(train_df)))
 
