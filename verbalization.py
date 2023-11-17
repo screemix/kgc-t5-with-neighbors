@@ -47,14 +47,14 @@ class Verbalizer:
 
         # relation_id and tail_id included for train dataset verbalization to hide the target node
         else:
-            cursor = self.base_dataset_collection.find({"$or": [{'tail': {'$ne': tail_id}}, {'relation': {'$ne': relation_id}}], 
-                                                         'head': node_id}, {'_id': False})
+            cursor = self.base_dataset_collection.find({'head': node_id,
+                                                        "$or": [{'tail': {'$ne': tail_id}}, {'relation': {'$ne': relation_id}}]}, {'_id': False})
             cursor = cursor.limit(limit) if limit else cursor
             for doc in cursor:
                 neighs.append(doc)
 
-            cursor = self.base_dataset_collection.find({"$or": [{'head': {'$ne': tail_id}}, {'relation': {'$ne': relation_id}}],
-                                                         'tail': node_id}, {'_id': False})
+            cursor = self.base_dataset_collection.find({'tail': node_id, 
+                                                        "$or": [{'head': {'$ne': tail_id}}, {'relation': {'$ne': relation_id}}]}, {'_id': False})
             cursor = cursor.limit(limit) if limit else cursor
             for doc in cursor:
                 doc['relation'] = 'inverse of ' + doc['relation']
@@ -88,7 +88,7 @@ class Verbalizer:
         return " ".join(verbalization.split()).strip() 
     
 
-def verbalize_dataset(input_df, output_collection, verbalizer):
+def verbalize_dataset(input_df, output_collection, verbalizer, insert_index=10000):
     # logger.info('Started verbalizing {}th triplet'.format(i))
     start_time = time.time()
     docs = []
@@ -113,7 +113,7 @@ def verbalize_dataset(input_df, output_collection, verbalizer):
         except Exception as e:
             logger.exception('Exception {} on {}th triplet'.format(e, i))
         
-        if i % 5000 == 0 and i > 0:
+        if i % 50000 == 0 and i > 0:
             output_collection.insert_many(docs)
             docs = []
             if i % 100000 == 0:
@@ -139,6 +139,7 @@ parser.add_argument("--valid_collection_output", help="name of the collection th
 parser.add_argument("--test_collection_output", help="name of the collection that stores verbalized test KG", default='verbalized_test')
 
 args = parser.parse_args()
+
 
 vecs = np.load(args.relation_vectors_path)
 similarity_matrix = cosine_similarity(vecs)
@@ -175,7 +176,7 @@ collection_test = client[DB_NAME][args.test_collection_input]
 
 logger.info('Creating indexes in the collection with the KGs...')
 for coll in [collection_train, collection_valid, collection_test]:
-    collection_train.create_index([("head", 1)])
+    coll.create_index([("head", 1)])
     coll.create_index([("tail", 1)])
     coll.create_index([("relation", 1)])
 
@@ -197,8 +198,6 @@ for i, doc in tqdm(valid_df.iterrows(), total=len(valid_df)):
 logger.info('Populating collection with the test KG...')
 for i, doc in tqdm(test_df.iterrows(), total=len(test_df)):
     collection_test.insert_one({'_id': i , 'head': doc['head'], 'tail': doc['tail'], 'relation': doc['relation']})
-
-
 
 
 verbalizer_train = Verbalizer(collection_train, similarity_matrix=similarity_matrix,
