@@ -123,6 +123,15 @@ def verbalize_dataset(input_df, output_collection, verbalizer, insert_index=1000
 
     return output_collection.count_documents({})
 
+
+def filter_only_train_entities(df, base_df):
+    df_unique_nodes = set(list(df["head"]) + list(df["tail"]))
+    common_unique_nodes = df_unique_nodes & set(list(base_df["head"]) + list(base_df["tail"]))
+
+    nodes2drop = df_unique_nodes - common_unique_nodes
+    return df[(df['tail'].apply(lambda x: x not in nodes2drop)) & (df['head'].apply(lambda x: x not in nodes2drop))].reset_index(drop=True)
+
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument("--relation_vectors_path", help="path to the embeddings of verbalized relations", default="data/embeddings/fasttext_vecs-wikidata5m.npy")
@@ -137,6 +146,7 @@ parser.add_argument("--test_collection_input", help="name of the collection that
 parser.add_argument("--train_collection_output", help="name of the collection that stores verbalized train KG", default='verbalized_train')
 parser.add_argument("--valid_collection_output", help="name of the collection that stores verbalized valid KG", default='verbalized_valid')
 parser.add_argument("--test_collection_output", help="name of the collection that stores verbalized test KG", default='verbalized_test')
+parser.add_argument("--filter_transductive", help="whether to filter all entities from test and valid KG that are not in the train KG", default='1', type=bool)
 
 args = parser.parse_args()
 
@@ -165,6 +175,25 @@ dataset = datasets.Wikidata5M()
 train_df = pd.read_csv(dataset.training_path, sep='\t', names=['head', 'relation', 'tail'], encoding='utf-8')
 valid_df = pd.read_csv(dataset.validation_path, sep="\t", names=["head", "relation", "tail"], encoding="utf-8")
 test_df = pd.read_csv(dataset.testing_path, sep="\t", names=["head", "relation", "tail"], encoding="utf-8")
+
+logger.info('Length of the train KG: {}'.format(len(train_df)))
+
+if args.filter_transductive:
+    original_valid_len = len(valid_df)
+    original_test_len = len(test_df)
+
+    logger.info('Filtering valid and test datasets...')
+
+    valid_df = filter_only_train_entities(valid_df, train_df)
+    test_df = filter_only_train_entities(test_df, train_df)
+
+    logger.info('There were filtered {} in the valid KG, the length of updated valid KG: {}'.format(original_valid_len - len(valid_df), len(valid_df)))
+    logger.info('There were filtered {} in the test KG, the length of updated test KG: {}'.format(original_test_len - len(test_df), len(test_df)))
+
+else:
+    logger.info('Length of the valid KG: {}'.format(len(valid_df)))
+    logger.info('Length of the test KG: {}'.format(len(test_df)))
+
 
 client = MongoClient('localhost', args.mongodb_port)
 DB_NAME = args.input_db
