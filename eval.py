@@ -25,7 +25,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--from_hub", help="Name of the repository and the model from huggingface model hub, e.g. DeepPavlov/t5-wikidata5M-with-neighbors", default=None)
 parser.add_argument("--cpt_path", help="Path to the model's weigths", default=None)
 parser.add_argument("--model_cfg", help="Name of model config, e.g. t5-small", default='t5-small')
-parser.add_argument('--tokenizer', type=str, default=None, help='path or name of pre-trained HF Tokenizer', default='t5-small')
+parser.add_argument('--tokenizer', type=str, help='path or name of pre-trained HF Tokenizer', default='t5-small')
 parser.add_argument("--gpu", help="id of gpu using for evaluation", type=int)
 parser.add_argument("--transductive", help="0 for inductive datasets, 1 for transductive", type=bool)
 parser.add_argument("--neighborhood", help="1 to use neighborhood in the input, 0 otherwise", type=bool)
@@ -332,9 +332,9 @@ model_args = Args(save_file=save_file)
 dataset = KGLMDataset(args.mongodb_port, args.input_db, args.verbalized_eval_collection, tokenizer, max_seq_length=model_args.max_output_length, neighborhood=args.neighborhood)
 
 acc = eval(model, dataset, model_args) 
-logger.info("Accuracy@all: ", acc)
+logger.info("Accuracy@all: {}".format(acc))
 
-scores_data = pickle.load(open(os.join('scores/', model_args.save_file + '.pickle'), 'rb'))
+scores_data = pickle.load(open(os.path.join('scores/', model_args.save_file + '.pickle'), 'rb'))
 
 # creating list of dictionaries {prediction: score} for each input 
 # and leaving only existing entities from KG in case of transductive setting
@@ -388,11 +388,11 @@ for i in tqdm(range(len(predictions_scores_dicts))):
         inverse = 'inverse of' in relation
         if inverse:
             relation = relation.replace("inverse of", "").strip()
-            relation = inverse_relation_mapping[relation]
+            # relation = inverse_relation_mapping[relation]
             filtering_entities = get_filtering_entities(head, relation, inverse=True)
 
         else:
-            relation = inverse_relation_mapping[relation]
+            # relation = inverse_relation_mapping[relation]
             filtering_entities = get_filtering_entities(head, relation, inverse=False)
 
         # if there is a link between predicted and input entities, we don't consider it during ranking   
@@ -457,7 +457,7 @@ for i in tqdm(range(len(predictions_filtered))):
 total_count = len(predictions_filtered)
 
 
-with open(os.join('scores/', args.output_file),'a') as f:
+with open(os.path.join('scores/', args.output_file),'a') as f:
     f.write('Scored model: {} \n'.format(model_args.save_file))
     logger.info('Scored model: {} \n'.format(model_args.save_file))
     f.write('Acc: {} \n'.format(acc))
